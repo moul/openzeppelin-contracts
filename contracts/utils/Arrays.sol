@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v5.0.0) (utils/Arrays.sol)
+// OpenZeppelin Contracts (last updated v5.1.0) (utils/Arrays.sol)
+// This file was procedurally generated from scripts/generate/templates/Arrays.js.
 
 pragma solidity ^0.8.20;
 
+import {Comparators} from "./Comparators.sol";
+import {SlotDerivation} from "./SlotDerivation.sol";
 import {StorageSlot} from "./StorageSlot.sol";
 import {Math} from "./math/Math.sol";
 
@@ -10,7 +13,66 @@ import {Math} from "./math/Math.sol";
  * @dev Collection of functions related to array types.
  */
 library Arrays {
+    using SlotDerivation for bytes32;
     using StorageSlot for bytes32;
+
+    /**
+     * @dev Sort an array of uint256 (in memory) following the provided comparator function.
+     *
+     * This function does the sorting "in place", meaning that it overrides the input. The object is returned for
+     * convenience, but that returned value can be discarded safely if the caller has a memory pointer to the array.
+     *
+     * NOTE: this function's cost is `O(n · log(n))` in average and `O(n²)` in the worst case, with n the length of the
+     * array. Using it in view functions that are executed through `eth_call` is safe, but one should be very careful
+     * when executing this as part of a transaction. If the array being sorted is too large, the sort operation may
+     * consume more gas than is available in a block, leading to potential DoS.
+     *
+     * IMPORTANT: Consider memory side-effects when using custom comparator functions that access memory in an unsafe way.
+     */
+    function sort(
+        uint256[] memory array,
+        function(uint256, uint256) pure returns (bool) comp
+    ) internal pure returns (uint256[] memory) {
+        _quickSort(_begin(array), _end(array), comp);
+        return array;
+    }
+
+    /**
+     * @dev Variant of {sort} that sorts an array of uint256 in increasing order.
+     */
+    function sort(uint256[] memory array) internal pure returns (uint256[] memory) {
+        sort(array, Comparators.lt);
+        return array;
+    }
+
+    /**
+     * @dev Sort an array of address (in memory) following the provided comparator function.
+     *
+     * This function does the sorting "in place", meaning that it overrides the input. The object is returned for
+     * convenience, but that returned value can be discarded safely if the caller has a memory pointer to the array.
+     *
+     * NOTE: this function's cost is `O(n · log(n))` in average and `O(n²)` in the worst case, with n the length of the
+     * array. Using it in view functions that are executed through `eth_call` is safe, but one should be very careful
+     * when executing this as part of a transaction. If the array being sorted is too large, the sort operation may
+     * consume more gas than is available in a block, leading to potential DoS.
+     *
+     * IMPORTANT: Consider memory side-effects when using custom comparator functions that access memory in an unsafe way.
+     */
+    function sort(
+        address[] memory array,
+        function(address, address) pure returns (bool) comp
+    ) internal pure returns (address[] memory) {
+        sort(_castToUint256Array(array), _castToUint256Comp(comp));
+        return array;
+    }
+
+    /**
+     * @dev Variant of {sort} that sorts an array of address in increasing order.
+     */
+    function sort(address[] memory array) internal pure returns (address[] memory) {
+        sort(_castToUint256Array(array), Comparators.lt);
+        return array;
+    }
 
     /**
      * @dev Sort an array of bytes32 (in memory) following the provided comparator function.
@@ -22,12 +84,14 @@ library Arrays {
      * array. Using it in view functions that are executed through `eth_call` is safe, but one should be very careful
      * when executing this as part of a transaction. If the array being sorted is too large, the sort operation may
      * consume more gas than is available in a block, leading to potential DoS.
+     *
+     * IMPORTANT: Consider memory side-effects when using custom comparator functions that access memory in an unsafe way.
      */
     function sort(
         bytes32[] memory array,
         function(bytes32, bytes32) pure returns (bool) comp
     ) internal pure returns (bytes32[] memory) {
-        _quickSort(_begin(array), _end(array), comp);
+        sort(_castToUint256Array(array), _castToUint256Comp(comp));
         return array;
     }
 
@@ -35,44 +99,7 @@ library Arrays {
      * @dev Variant of {sort} that sorts an array of bytes32 in increasing order.
      */
     function sort(bytes32[] memory array) internal pure returns (bytes32[] memory) {
-        return sort(array, _defaultComp);
-    }
-
-    /**
-     * @dev Variant of {sort} that sorts an array of address following a provided comparator function.
-     */
-    function sort(
-        address[] memory array,
-        function(address, address) pure returns (bool) comp
-    ) internal pure returns (address[] memory) {
-        sort(_castToBytes32Array(array), _castToBytes32Comp(comp));
-        return array;
-    }
-
-    /**
-     * @dev Variant of {sort} that sorts an array of address in increasing order.
-     */
-    function sort(address[] memory array) internal pure returns (address[] memory) {
-        sort(_castToBytes32Array(array), _defaultComp);
-        return array;
-    }
-
-    /**
-     * @dev Variant of {sort} that sorts an array of uint256 following a provided comparator function.
-     */
-    function sort(
-        uint256[] memory array,
-        function(uint256, uint256) pure returns (bool) comp
-    ) internal pure returns (uint256[] memory) {
-        sort(_castToBytes32Array(array), _castToBytes32Comp(comp));
-        return array;
-    }
-
-    /**
-     * @dev Variant of {sort} that sorts an array of uint256 in increasing order.
-     */
-    function sort(uint256[] memory array) internal pure returns (uint256[] memory) {
-        sort(_castToBytes32Array(array), _defaultComp);
+        sort(_castToUint256Array(array), Comparators.lt);
         return array;
     }
 
@@ -85,12 +112,12 @@ library Arrays {
      * IMPORTANT: Memory locations between `begin` and `end` are not validated/zeroed. This function should
      * be used only if the limits are within a memory array.
      */
-    function _quickSort(uint256 begin, uint256 end, function(bytes32, bytes32) pure returns (bool) comp) private pure {
+    function _quickSort(uint256 begin, uint256 end, function(uint256, uint256) pure returns (bool) comp) private pure {
         unchecked {
             if (end - begin < 0x40) return;
 
             // Use first element as pivot
-            bytes32 pivot = _mload(begin);
+            uint256 pivot = _mload(begin);
             // Position where the pivot should be at the end of the loop
             uint256 pos = begin;
 
@@ -112,9 +139,8 @@ library Arrays {
     /**
      * @dev Pointer to the memory location of the first element of `array`.
      */
-    function _begin(bytes32[] memory array) private pure returns (uint256 ptr) {
-        /// @solidity memory-safe-assembly
-        assembly {
+    function _begin(uint256[] memory array) private pure returns (uint256 ptr) {
+        assembly ("memory-safe") {
             ptr := add(array, 0x20)
         }
     }
@@ -123,16 +149,16 @@ library Arrays {
      * @dev Pointer to the memory location of the first memory word (32bytes) after `array`. This is the memory word
      * that comes just after the last element of the array.
      */
-    function _end(bytes32[] memory array) private pure returns (uint256 ptr) {
+    function _end(uint256[] memory array) private pure returns (uint256 ptr) {
         unchecked {
             return _begin(array) + array.length * 0x20;
         }
     }
 
     /**
-     * @dev Load memory word (as a bytes32) at location `ptr`.
+     * @dev Load memory word (as a uint256) at location `ptr`.
      */
-    function _mload(uint256 ptr) private pure returns (bytes32 value) {
+    function _mload(uint256 ptr) private pure returns (uint256 value) {
         assembly {
             value := mload(ptr)
         }
@@ -150,38 +176,33 @@ library Arrays {
         }
     }
 
-    /// @dev Comparator for sorting arrays in increasing order.
-    function _defaultComp(bytes32 a, bytes32 b) private pure returns (bool) {
-        return a < b;
-    }
-
     /// @dev Helper: low level cast address memory array to uint256 memory array
-    function _castToBytes32Array(address[] memory input) private pure returns (bytes32[] memory output) {
+    function _castToUint256Array(address[] memory input) private pure returns (uint256[] memory output) {
         assembly {
             output := input
         }
     }
 
-    /// @dev Helper: low level cast uint256 memory array to uint256 memory array
-    function _castToBytes32Array(uint256[] memory input) private pure returns (bytes32[] memory output) {
+    /// @dev Helper: low level cast bytes32 memory array to uint256 memory array
+    function _castToUint256Array(bytes32[] memory input) private pure returns (uint256[] memory output) {
         assembly {
             output := input
         }
     }
 
-    /// @dev Helper: low level cast address comp function to bytes32 comp function
-    function _castToBytes32Comp(
+    /// @dev Helper: low level cast address comp function to uint256 comp function
+    function _castToUint256Comp(
         function(address, address) pure returns (bool) input
-    ) private pure returns (function(bytes32, bytes32) pure returns (bool) output) {
+    ) private pure returns (function(uint256, uint256) pure returns (bool) output) {
         assembly {
             output := input
         }
     }
 
-    /// @dev Helper: low level cast uint256 comp function to bytes32 comp function
-    function _castToBytes32Comp(
-        function(uint256, uint256) pure returns (bool) input
-    ) private pure returns (function(bytes32, bytes32) pure returns (bool) output) {
+    /// @dev Helper: low level cast bytes32 comp function to uint256 comp function
+    function _castToUint256Comp(
+        function(bytes32, bytes32) pure returns (bool) input
+    ) private pure returns (function(uint256, uint256) pure returns (bool) output) {
         assembly {
             output := input
         }
@@ -361,15 +382,10 @@ library Arrays {
      */
     function unsafeAccess(address[] storage arr, uint256 pos) internal pure returns (StorageSlot.AddressSlot storage) {
         bytes32 slot;
-        // We use assembly to calculate the storage slot of the element at index `pos` of the dynamic array `arr`
-        // following https://docs.soliditylang.org/en/v0.8.20/internals/layout_in_storage.html#mappings-and-dynamic-arrays.
-
-        /// @solidity memory-safe-assembly
-        assembly {
-            mstore(0, arr.slot)
-            slot := add(keccak256(0, 0x20), pos)
+        assembly ("memory-safe") {
+            slot := arr.slot
         }
-        return slot.getAddressSlot();
+        return slot.deriveArray().offset(pos).getAddressSlot();
     }
 
     /**
@@ -379,15 +395,10 @@ library Arrays {
      */
     function unsafeAccess(bytes32[] storage arr, uint256 pos) internal pure returns (StorageSlot.Bytes32Slot storage) {
         bytes32 slot;
-        // We use assembly to calculate the storage slot of the element at index `pos` of the dynamic array `arr`
-        // following https://docs.soliditylang.org/en/v0.8.20/internals/layout_in_storage.html#mappings-and-dynamic-arrays.
-
-        /// @solidity memory-safe-assembly
-        assembly {
-            mstore(0, arr.slot)
-            slot := add(keccak256(0, 0x20), pos)
+        assembly ("memory-safe") {
+            slot := arr.slot
         }
-        return slot.getBytes32Slot();
+        return slot.deriveArray().offset(pos).getBytes32Slot();
     }
 
     /**
@@ -397,15 +408,10 @@ library Arrays {
      */
     function unsafeAccess(uint256[] storage arr, uint256 pos) internal pure returns (StorageSlot.Uint256Slot storage) {
         bytes32 slot;
-        // We use assembly to calculate the storage slot of the element at index `pos` of the dynamic array `arr`
-        // following https://docs.soliditylang.org/en/v0.8.20/internals/layout_in_storage.html#mappings-and-dynamic-arrays.
-
-        /// @solidity memory-safe-assembly
-        assembly {
-            mstore(0, arr.slot)
-            slot := add(keccak256(0, 0x20), pos)
+        assembly ("memory-safe") {
+            slot := arr.slot
         }
-        return slot.getUint256Slot();
+        return slot.deriveArray().offset(pos).getUint256Slot();
     }
 
     /**
@@ -438,6 +444,39 @@ library Arrays {
     function unsafeMemoryAccess(uint256[] memory arr, uint256 pos) internal pure returns (uint256 res) {
         assembly {
             res := mload(add(add(arr, 0x20), mul(pos, 0x20)))
+        }
+    }
+
+    /**
+     * @dev Helper to set the length of an dynamic array. Directly writing to `.length` is forbidden.
+     *
+     * WARNING: this does not clear elements if length is reduced, of initialize elements if length is increased.
+     */
+    function unsafeSetLength(address[] storage array, uint256 len) internal {
+        assembly ("memory-safe") {
+            sstore(array.slot, len)
+        }
+    }
+
+    /**
+     * @dev Helper to set the length of an dynamic array. Directly writing to `.length` is forbidden.
+     *
+     * WARNING: this does not clear elements if length is reduced, of initialize elements if length is increased.
+     */
+    function unsafeSetLength(bytes32[] storage array, uint256 len) internal {
+        assembly ("memory-safe") {
+            sstore(array.slot, len)
+        }
+    }
+
+    /**
+     * @dev Helper to set the length of an dynamic array. Directly writing to `.length` is forbidden.
+     *
+     * WARNING: this does not clear elements if length is reduced, of initialize elements if length is increased.
+     */
+    function unsafeSetLength(uint256[] storage array, uint256 len) internal {
+        assembly ("memory-safe") {
+            sstore(array.slot, len)
         }
     }
 }
